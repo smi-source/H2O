@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Hydrogen three-cylinder engine</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Condensed:wght@500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#E6EBEE; --scene:#E6EBEE; --surface:rgba(250,252,253,.9); --ink:#1B252B; --muted:#5A6870;
+  --line:#C3CDD3; --grid:#C9D2D8; --air:#7E95A3;
+  --h2:#1E9DC2; --comp:#3E66BE; --fire:#DB8420; --sensor:#BE3D7B; --mech:#6E7E88;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){
+  :root{
+    --bg:#12171B; --scene:#12171B; --surface:rgba(24,31,36,.9); --ink:#E2E8EB; --muted:#93A2AA;
+    --line:#2F3B42; --grid:#25313A; --air:#9FB4C0;
+    --h2:#4CC7E8; --comp:#86A4EC; --fire:#F2A54A; --sensor:#E86BA6; --mech:#98A8B1;
+    color-scheme:dark;
+  }
+}
+*{box-sizing:border-box;margin:0}
+html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--ink);font-family:Barlow,system-ui,sans-serif}
+canvas{position:fixed;inset:0;width:100%;height:100%;display:block;touch-action:none;cursor:grab}
+canvas:active{cursor:grabbing}
+.title{position:fixed;top:max(14px,env(safe-area-inset-top));left:16px;right:16px;max-width:30rem;pointer-events:none}
+.title h1{font-family:'Barlow Condensed',Barlow,sans-serif;font-weight:600;font-size:1.7rem;line-height:1.05;letter-spacing:.005em}
+.title p{margin-top:.35rem;font-size:.9rem;line-height:1.4;color:var(--muted)}
+#tags{position:fixed;inset:0;pointer-events:none}
+.tag{position:absolute;left:0;top:0;pointer-events:auto;display:flex;align-items:center;gap:6px;padding:3px 0;border:0;background:none;color:var(--ink);font:500 .78rem/1.1 Barlow,sans-serif;white-space:nowrap;cursor:pointer;will-change:transform}
+.tag i{flex:none;width:10px;height:10px;border-radius:50%;background:var(--c);box-shadow:0 0 0 2px var(--bg)}
+.tag b{font-weight:500;padding:3px 7px;border-radius:4px;background:var(--surface);border:1px solid var(--line)}
+.tag[aria-pressed="true"] b{border-color:var(--c);box-shadow:inset 0 -2px 0 var(--c)}
+.hide-tags #tags{display:none}
+.bar{position:fixed;left:0;right:0;bottom:0;display:grid;gap:10px;padding:10px 14px max(12px,env(safe-area-inset-bottom));background:var(--surface);border-top:1px solid var(--line);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
+.strokes{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.cyl{font-size:.76rem;color:var(--muted)}
+.cyl strong{display:block;font-size:.9rem;font-weight:600;color:var(--sc,var(--ink))}
+.track{height:3px;margin-top:5px;border-radius:2px;background:var(--line);overflow:hidden}
+.track span{display:block;height:100%;width:0;background:var(--sc,var(--ink))}
+.ctrls{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.btn{font:600 .85rem Barlow,sans-serif;padding:8px 13px;border-radius:6px;border:1px solid var(--line);background:transparent;color:var(--ink);cursor:pointer}
+.btn[aria-pressed="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.speed{flex:1;min-width:150px;display:flex;align-items:center;gap:8px;font-size:.85rem;color:var(--muted)}
+.speed input{flex:1;accent-color:var(--h2)}
+:focus-visible{outline:2px solid var(--h2);outline-offset:2px}
+#info{position:fixed;left:12px;right:12px;bottom:calc(var(--barH,150px) + 10px);max-width:27rem;padding:12px 42px 13px 14px;border:1px solid var(--line);border-left:3px solid var(--c);border-radius:8px;background:var(--surface);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
+#info[hidden]{display:none}
+#info h2{font:600 1.1rem/1.15 'Barlow Condensed',Barlow,sans-serif}
+#info p{margin-top:5px;font-size:.9rem;line-height:1.45}
+#infoClose{position:absolute;top:6px;right:6px;width:32px;height:32px;border:0;background:none;color:var(--muted);font-size:1.35rem;cursor:pointer}
+#err{position:fixed;inset:auto 16px 50% 16px;text-align:center;color:var(--muted)}
+@media (min-width:780px){
+  .bar{left:16px;right:auto;bottom:16px;width:540px;border:1px solid var(--line);border-radius:10px}
+  #info{left:auto;right:16px;bottom:16px}
+}
+</style>
+</head>
+<body>
+<canvas id="c" aria-label="Animated 3D model of a hydrogen three-cylinder engine"></canvas>
+<div id="tags"></div>
+<header class="title">
+  <h1>Hydrogen three-cylinder engine</h1>
+  <p>Overhead valve with pushrods, hydrogen port injection, firing order 1-2-3. Drag to orbit, pinch or scroll to zoom, tap a label for details.</p>
+</header>
+<aside id="info" hidden aria-live="polite"><button id="infoClose" aria-label="Close details">×</button><h2></h2><p></p></aside>
+<footer class="bar" id="bar">
+  <div class="strokes" id="strokes"></div>
+  <div class="ctrls">
+    <button class="btn" id="play" aria-pressed="false">Pause</button>
+    <label class="speed">Speed <input type="range" id="speed" min="30" max="900" value="220"></label>
+    <button class="btn" id="tagsBtn" aria-pressed="true">Labels</button>
+    <button class="btn" id="cutBtn" aria-pressed="true">Cutaway</button>
+  </div>
+</footer>
+<p id="err" hidden>The 3D library couldn't load. Check your connection and reload.</p>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(function(){
+if(!window.THREE){document.getElementById('err').hidden=false;return;}
+const DEG=Math.PI/180, X=[-1.2,0,1.2], R=0.35, L=1.1;
+const V=(x,y,z)=>new THREE.Vector3(x,y,z);
+const reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+/* ---------- renderer / scene ---------- */
+const canvas=document.getElementById('c');
+const renderer=new THREE.WebGLRenderer({canvas,antialias:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+renderer.outputEncoding=THREE.sRGBEncoding;
+const scene=new THREE.Scene();
+const camera=new THREE.PerspectiveCamera(35,1,0.1,100);
+scene.add(new THREE.HemisphereLight(0xffffff,0x445566,0.75));
+const d1=new THREE.DirectionalLight(0xffffff,0.95);d1.position.set(-5,8,-6);scene.add(d1);
+const d2=new THREE.DirectionalLight(0xffffff,0.45);d2.position.set(6,4,5);scene.add(d2);
+const engine=new THREE.Group();scene.add(engine);
+
+const std=(c,m,r,extra)=>new THREE.MeshStandardMaterial(Object.assign({color:c,metalness:m,roughness:r},extra||{}));
+const M={
+  steel:std(0x9aa5ad,.65,.32), dark:std(0x3d454b,.5,.5), piston:std(0xcfd4d7,.6,.3),
+  block:std(0x7d8a92,.3,.6,{side:THREE.DoubleSide}), alu:std(0xb4bcc2,.55,.4,{side:THREE.DoubleSide}),
+  h2:std(0x24a8cf,.4,.35), sensor:std(0xc2407e,.2,.45), plug:std(0x22282c,.2,.6), exhaust:std(0x7a6458,.5,.55),
+  liner:std(0xaab6bd,.3,.4,{transparent:true,opacity:.14,side:THREE.DoubleSide,depthWrite:false})
+};
+const lineMat=new THREE.LineBasicMaterial({color:0x5d6b73,transparent:true,opacity:.55});
+
+const comps={};
+function comp(k){const g=new THREE.Group();engine.add(g);comps[k]=g;return g;}
+function mesh(geo,mat,parent,pos,rot){const m=new THREE.Mesh(geo,mat);if(pos)m.position.set(pos[0],pos[1],pos[2]);if(rot)m.rotation.set(rot[0],rot[1],rot[2]);parent.add(m);return m;}
+const cylX=(r,len,seg)=>new THREE.CylinderGeometry(r,r,len,seg||24);
+const RX=[0,0,Math.PI/2], RZ=[Math.PI/2,0,0];
+function between(a,b,r,mat){const d=b.clone().sub(a),len=d.length();const m=new THREE.Mesh(new THREE.CylinderGeometry(r,r,len,16),mat);m.position.copy(a).addScaledVector(d,.5);m.quaternion.setFromUnitVectors(V(0,1,0),d.normalize());return m;}
+function edges(geo,m){const e=new THREE.LineSegments(new THREE.EdgesGeometry(geo),lineMat);e.position.copy(m.position);m.parent.add(e);}
+
+/* ---------- block, head, liners ---------- */
+const blockG=comp('block');
+let g=new THREE.BoxGeometry(3.9,2.3,1.8);let m=mesh(g,M.block,blockG,[0,.65,0]);m.userData.cut=.1;edges(g,m);
+g=new THREE.BoxGeometry(3.9,.6,1.25);m=mesh(g,M.block,blockG,[0,2.1,0]);m.userData.cut=.14;edges(g,m);
+g=new THREE.BoxGeometry(3.7,.55,.85);m=mesh(g,M.block,blockG,[0,2.675,-.295]);m.userData.cut=.12;edges(g,m); // rocker cover
+X.forEach(x=>mesh(new THREE.CylinderGeometry(.47,.47,1.3,32,1,true),M.liner,blockG,[x,1.15,0]));
+
+/* ---------- pistons, rods, crank ---------- */
+const pg=comp('pistons'),pistons=[],rods=[];
+X.forEach(x=>{
+  const p=new THREE.Group();p.position.x=x;pg.add(p);pistons.push(p);
+  mesh(new THREE.CylinderGeometry(.44,.44,.42,32),M.piston,p,[0,.08,0]);
+  [.24,.17].forEach(y=>mesh(new THREE.CylinderGeometry(.446,.446,.025,32),M.dark,p,[0,y,0]));
+  mesh(cylX(.05,.5,12),M.steel,p,[0,0,0],RX);
+  const r=new THREE.Group();r.position.x=x;pg.add(r);rods.push(r);
+  const rg=new THREE.BoxGeometry(.09,L,.13);rg.translate(0,L/2,0);mesh(rg,M.steel,r);
+  mesh(cylX(.15,.12,20),M.steel,r,[0,0,0],RX);
+  mesh(cylX(.08,.12,16),M.steel,r,[0,L,0],RX);
+});
+const crank=new THREE.Group();pg.add(crank);
+[[-2.45,-1.55],[-.85,-.35],[.35,.85],[1.55,2.05]].forEach(([a,b])=>mesh(cylX(.12,b-a,20),M.steel,crank,[(a+b)/2,0,0],RX));
+X.forEach((x,i)=>{const a=-i*240*DEG;
+  mesh(cylX(.11,.5,20),M.steel,crank,[x,R*Math.cos(a),R*Math.sin(a)],RX);
+  [-.3,.3].forEach(dx=>{const c=R/2-.12;mesh(new THREE.BoxGeometry(.1,.85,.46),M.steel,crank,[x+dx,c*Math.cos(a),c*Math.sin(a)],[a,0,0]);});
+});
+
+/* ---------- crank sensor + 36-1 wheel ---------- */
+const csG=comp('crank');
+const crankWheel=new THREE.Group();crankWheel.position.x=-2.2;csG.add(crankWheel);
+mesh(cylX(.48,.05,48),M.dark,crankWheel,null,RX);
+for(let k=1;k<36;k++){const a=k*10*DEG;mesh(new THREE.BoxGeometry(.05,.1,.07),M.dark,crankWheel,[0,.52*Math.cos(a),.52*Math.sin(a)],[a,0,0]);}
+let s=new THREE.Group();s.position.set(-2.2,0,.62);csG.add(s);
+mesh(cylX(.07,.32,16),M.sensor,s,[0,0,.16],RZ);
+mesh(new THREE.BoxGeometry(.16,.12,.14),M.sensor,s,[0,0,.38]);
+mesh(new THREE.BoxGeometry(.1,.08,.1),M.plug,s,[0,0,.5]);
+
+/* ---------- OHV valvetrain: camshaft in block, tappets, pushrods, rockers ---------- */
+const camG=comp('camshaft'),vt=comp('valvetrain'),trains=[];
+const cam=new THREE.Group();cam.position.set(0,.35,-.65);camG.add(cam);
+mesh(cylX(.07,4.3,16),M.steel,cam,[-.2,0,0],RX);
+X.forEach((x,i)=>{[['in',-.2,450],['ex',.2,270]].forEach(([k,dx,mid])=>{
+  const vx=x+dx,b=-(mid+240*i)/2*DEG;           // lobe points up at mid-lift
+  mesh(cylX(.1,.12),M.steel,cam,[vx,0,0],RX);
+  mesh(cylX(.065,.12,20),M.steel,cam,[vx,.135*Math.cos(b),.135*Math.sin(b)],RX);
+  const lifter=new THREE.Group();lifter.position.set(vx,0,-.65);camG.add(lifter);
+  mesh(new THREE.CylinderGeometry(.075,.075,.25,16),M.dark,lifter,[0,.575,0]);
+  const pr=new THREE.Group();vt.add(pr);
+  pr.add(between(V(vx,.7,-.65),V(vx,2.63,-.55),.025,M.steel));
+  const rk=new THREE.Group();rk.position.set(vx,2.66,-.3);vt.add(rk);
+  mesh(new THREE.BoxGeometry(.08,.07,.56),M.steel,rk);
+  mesh(cylX(.06,.1,16),M.steel,rk,[0,0,0],RX);
+  mesh(new THREE.CylinderGeometry(.035,.035,.06,10),M.steel,rk,[0,-.05,-.25]);
+  mesh(new THREE.CylinderGeometry(.04,.04,.04,10),M.steel,rk,[0,-.05,.25]);
+  mesh(new THREE.CylinderGeometry(.075,.075,.14,14),M.dark,vt,[vx,2.47,-.05]);
+  const v=new THREE.Group();v.position.set(vx,0,-.05);vt.add(v);
+  mesh(new THREE.CylinderGeometry(.1,.14,.05,24),M.steel,v,[0,1.825,0]);
+  mesh(new THREE.CylinderGeometry(.025,.025,.74,10),M.steel,v,[0,2.22,0]);
+  mesh(new THREE.CylinderGeometry(.085,.085,.03,14),M.steel,v,[0,2.555,0]);
+  trains.push({i,k,lifter,pr,rk,v});
+});});
+mesh(cylX(.035,3.6,12),M.steel,vt,[0,2.66,-.3],RX);
+
+/* ---------- phase sensor through rocker cover, over cylinder 1's first rocker ---------- */
+const phG=comp('phase');
+s=new THREE.Group();s.position.set(-1.4,0,-.55);phG.add(s);
+mesh(new THREE.CylinderGeometry(.06,.06,.3,16),M.sensor,s,[0,3.0,0]);
+mesh(new THREE.CylinderGeometry(.1,.1,.03,6),M.sensor,s,[0,2.965,0]);
+mesh(new THREE.BoxGeometry(.14,.12,.14),M.sensor,s,[0,3.2,0]);
+mesh(new THREE.BoxGeometry(.09,.08,.12),M.plug,s,[0,3.22,-.13]);
+
+/* ---------- ignition ---------- */
+const ig=comp('ignition'),sparks=[];
+X.forEach(x=>{
+  mesh(new THREE.CylinderGeometry(.045,.045,.3,12),M.plug,ig,[x,2.6,.3]);
+  mesh(new THREE.CylinderGeometry(.06,.06,.55,16),M.plug,ig,[x,3.0,.3]);
+  mesh(new THREE.BoxGeometry(.16,.1,.14),M.plug,ig,[x,3.32,.3]);
+  mesh(new THREE.CylinderGeometry(.02,.02,.06,8),M.steel,ig,[x,1.79,.3]);
+  const sp=new THREE.Mesh(new THREE.SphereGeometry(.07,12,8),new THREE.MeshBasicMaterial({color:0xfff2c0}));
+  sp.position.set(x,1.76,.3);sp.visible=false;scene.add(sp);sparks.push(sp);
+});
+
+/* ---------- inlet: filter, duct, throttle, plenum, runners ---------- */
+const inl=comp('inlet');
+X.forEach(x=>{
+  const c=new THREE.CatmullRomCurve3([V(x,2.1,-.55),V(x,2.18,-1.05),V(x,2.0,-1.55),V(x,1.72,-1.88)]);
+  mesh(new THREE.TubeGeometry(c,40,.15,18,false),M.alu,inl).userData.cut=.38;
+  mesh(new THREE.BoxGeometry(.42,.42,.06),M.alu,inl,[x,2.1,-.63]);
+});
+mesh(cylX(.38,3.3,36),M.alu,inl,[0,1.55,-2.05],RX).userData.cut=.32;
+mesh(cylX(.19,1.15),M.alu,inl,[-2.585,1.55,-2.05],RX).userData.cut=.4;
+mesh(cylX(.36,.55,32),M.dark,inl,[-3.43,1.55,-2.05],RX).userData.cut=.55;
+
+const th=comp('throttle');
+mesh(cylX(.21,.36),M.alu,th,[-1.83,1.55,-2.05],RX).userData.cut=.45;
+mesh(new THREE.CylinderGeometry(.19,.19,.015,24),M.steel,th,[-1.83,1.55,-2.05],[0,0,Math.PI/2-.6]);
+mesh(new THREE.BoxGeometry(.2,.14,.16),M.dark,th,[-1.83,1.83,-2.05]);
+
+const maf=comp('maf');
+mesh(new THREE.CylinderGeometry(.08,.08,.12,16),M.sensor,maf,[-2.6,1.78,-2.05]);
+mesh(new THREE.BoxGeometry(.22,.16,.15),M.sensor,maf,[-2.6,1.92,-2.05]);
+mesh(new THREE.BoxGeometry(.1,.09,.12),M.plug,maf,[-2.6,1.93,-2.18]);
+
+const map=comp('map');
+mesh(new THREE.BoxGeometry(.24,.06,.2),M.sensor,map,[.8,1.95,-2.05]);
+mesh(new THREE.BoxGeometry(.18,.15,.15),M.sensor,map,[.8,2.05,-2.05]);
+mesh(new THREE.BoxGeometry(.1,.09,.1),M.plug,map,[.8,2.06,-2.17]);
+
+/* ---------- hydrogen injectors + rail ---------- */
+const inj=comp('injectors'),injTips=[];
+X.forEach(x=>{
+  const T=V(x,2.27,-.93),U=V(x,2.72,-1.12);injTips.push(T);
+  inj.add(between(T,U,.055,M.h2));
+  inj.add(between(T.clone().lerp(U,.15),T.clone().lerp(U,.3),.075,M.dark));
+  mesh(new THREE.BoxGeometry(.12,.1,.14),M.plug,inj,[x,2.6,-1.19]);
+});
+const rail=comp('rail');
+mesh(cylX(.085,3.2,20),M.h2,rail,[0,2.78,-1.14],RX);
+rail.add(new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3([V(1.6,2.78,-1.14),V(2.05,2.8,-1.3),V(2.45,2.4,-1.7),V(2.6,1.5,-2.2)]),30,.04,10,false),M.h2));
+
+/* ---------- exhaust ---------- */
+const ex=comp('exhaust');
+X.forEach(x=>{
+  ex.add(new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3([V(x,2.1,.55),V(x,2.08,1.0),V(x*.5+.4,1.5,1.3),V(.4,.75,1.38)]),30,.12,14,false),M.exhaust));
+  mesh(new THREE.BoxGeometry(.4,.36,.06),M.exhaust,ex,[x,2.1,.65]);
+});
+mesh(new THREE.CylinderGeometry(.16,.16,1.05,20),M.exhaust,ex,[.4,.22,1.38]);
+
+/* ---------- combustion chamber charge ---------- */
+const charges=X.map(x=>{const c=new THREE.Mesh(new THREE.CylinderGeometry(.43,.43,1,28),new THREE.MeshBasicMaterial({transparent:true,depthWrite:false}));c.position.x=x;scene.add(c);return c;});
+
+/* give every labelled part its own materials so it can be highlighted alone */
+Object.values(comps).forEach(c=>c.traverse(o=>{if(o.isMesh)o.material=o.material.clone();}));
+
+function applyCut(on){scene.traverse(o=>{if(o.isMesh&&o.userData.cut!==undefined){o.material.transparent=on;o.material.opacity=on?o.userData.cut:1;o.material.depthWrite=!on;o.material.needsUpdate=true;}});}
+applyCut(true);
+
+/* ---------- particles ---------- */
+const airMat=new THREE.MeshBasicMaterial({color:0x7e95a3});
+const h2pMat=new THREE.MeshBasicMaterial({color:0x35c6ee});
+const pGeo=new THREE.SphereGeometry(1,8,6),pool=[];
+const ductCurve=new THREE.LineCurve3(V(-3.7,1.55,-2.05),V(-1.2,1.55,-2.05));
+const intakeCurves=X.map(x=>new THREE.CatmullRomCurve3([V(x,1.5,-2.05),V(x,1.72,-1.88),V(x,2.0,-1.55),V(x,2.18,-1.05),V(x,2.1,-.55),V(x-.2,1.92,-.1),V(x,1.55,0)]));
+const h2Curves=X.map((x,i)=>new THREE.CatmullRomCurve3([injTips[i],V(x,2.14,-.6),V(x-.2,1.92,-.1),V(x,1.55,0)]));
+function spawn(curve,mat,dur,size,jit){
+  let p=pool.find(q=>!q.on);
+  if(!p){p={m:new THREE.Mesh(pGeo,mat)};scene.add(p.m);pool.push(p);}
+  Object.assign(p,{on:true,curve,dur,size,t:0,j:V((Math.random()-.5)*jit,(Math.random()-.5)*jit,(Math.random()-.5)*jit)});
+  p.m.material=mat;p.m.visible=true;
+}
+function stepParticles(dd){
+  pool.forEach(p=>{if(!p.on)return;p.t+=dd/p.dur;
+    if(p.t>=1){p.on=false;p.m.visible=false;return;}
+    p.curve.getPointAt(p.t,p.m.position);const k=Math.sin(Math.PI*p.t);
+    p.m.position.addScaledVector(p.j,k);p.m.scale.setScalar(Math.max(.001,p.size*Math.min(1,k*3)));
+  });
+}
+
+/* ---------- theme ---------- */
+let grid;
+function theme(){
+  const cs=getComputedStyle(document.documentElement),gv=n=>cs.getPropertyValue(n).trim();
+  scene.background=new THREE.Color(gv('--scene'));airMat.color.set(gv('--air'));
+  if(grid){scene.remove(grid);grid.geometry.dispose();}
+  grid=new THREE.GridHelper(16,32,gv('--grid'),gv('--grid'));grid.position.set(-.5,-.62,-.4);scene.add(grid);
+}
+theme();matchMedia('(prefers-color-scheme: dark)').addEventListener('change',theme);
+
+/* ---------- labels ---------- */
+const LABELS=[
+ {k:'injectors',c:'--h2',n:'Hydrogen port injectors',p:[-1.2,2.45,-1.0],d:'One gaseous-hydrogen injector per cylinder, in the inlet runner just upstream of the intake valve. Injection is timed to that cylinder’s intake stroke, so hydrogen goes straight in with the air instead of sitting in the manifold.'},
+ {k:'rail',c:'--h2',n:'Hydrogen fuel rail',p:[1.75,2.8,-1.14],d:'Carries regulated hydrogen at a steady pressure to all three injectors. The feed line runs back to the tank regulator.'},
+ {k:'map',c:'--sensor',n:'MAP sensor',p:[.8,2.14,-2.05],d:'Manifold absolute pressure sensor on the plenum. Gives the ECU engine load, and lets it cross-check the airflow reading.'},
+ {k:'maf',c:'--sensor',n:'Mass airflow sensor',p:[-2.6,2.02,-2.05],d:'Sits in the inlet duct and measures the mass of air entering, so the ECU can meter the right amount of hydrogen for the target air-fuel ratio.'},
+ {k:'crank',c:'--sensor',n:'Crank sensor',p:[-2.2,-.05,.9],d:'Reads the 36-1 trigger wheel on the crankshaft. The missing tooth is a reference mark, giving the ECU exact crank position and engine speed.'},
+ {k:'phase',c:'--sensor',n:'Phase sensor',p:[-1.4,3.32,-.55],d:'Fitted through the rocker cover above the first rocker (cylinder 1 intake). It picks up the rocker moving as that valve opens, once every two crank turns, so the ECU knows which stroke each cylinder is on for sequential injection and spark.'},
+ {k:'throttle',c:'--mech',n:'Throttle body',p:[-1.83,1.95,-2.05],d:'Butterfly valve controlling air into the plenum. Many hydrogen engines run lean and largely unthrottled, using mixture to control load.'},
+ {k:'inlet',c:'--mech',n:'Inlet manifold',p:[.3,1.15,-2.05],d:'Air comes through the filter, past the airflow sensor and throttle, fills the plenum, then each runner feeds its own cylinder.'},
+ {k:'pistons',c:'--mech',n:'Pistons and crankshaft',p:[1.2,.35,0],d:'Three pistons on a crankshaft with throws 120° apart. One cylinder fires every 240° of crank rotation.'},
+ {k:'camshaft',c:'--mech',n:'Camshaft in block',p:[1.5,.1,-.9],d:'Single camshaft in the block, turning at half crank speed. Each lobe lifts a tappet, which drives a pushrod up to the head.'},
+ {k:'valvetrain',c:'--mech',n:'Pushrods and rockers',p:[.8,2.82,-.3],d:'Overhead-valve layout. Each pushrod tips its rocker on the rocker shaft, pressing the valve open against its spring. One intake and one exhaust valve per cylinder.'},
+ {k:'ignition',c:'--mech',n:'Spark plugs and coils',p:[0,3.4,.3],d:'Coil-on-plug spark ignition. Hydrogen needs very little energy to ignite, so spark timing is tightly controlled.'},
+ {k:'exhaust',c:'--mech',n:'Exhaust manifold',p:[.4,.05,1.4],d:'Three-into-one manifold. Combustion produces water vapour; NOx is the main emission to manage.'}
+];
+const tagsEl=document.getElementById('tags'),info=document.getElementById('info');
+let selected=null;
+LABELS.forEach(l=>{
+  l.v=V(...l.p);
+  const b=document.createElement('button');b.className='tag';b.style.setProperty('--c',`var(${l.c})`);
+  b.setAttribute('aria-pressed','false');b.innerHTML=`<i></i><b>${l.n}</b>`;
+  b.onclick=()=>select(selected===l?null:l);tagsEl.appendChild(b);l.el=b;
+});
+function setEmissive(group,hex,int){group.traverse(o=>{if(o.isMesh&&o.material.emissive){o.material.emissive.setHex(hex);o.material.emissiveIntensity=int;}});}
+function select(l){
+  if(selected){setEmissive(comps[selected.k],0,0);selected.el.setAttribute('aria-pressed','false');}
+  selected=l;
+  if(!l){info.hidden=true;return;}
+  l.el.setAttribute('aria-pressed','true');
+  info.style.setProperty('--c',`var(${l.c})`);
+  info.querySelector('h2').textContent=l.n;info.querySelector('p').textContent=l.d;info.hidden=false;
+}
+document.getElementById('infoClose').onclick=()=>select(null);
+
+/* ---------- stroke readout ---------- */
+const STROKES=[['Power','--fire'],['Exhaust','--mech'],['Intake','--h2'],['Compression','--comp']];
+const strokesEl=document.getElementById('strokes');
+const rows=X.map((_,i)=>{const d=document.createElement('div');d.className='cyl';d.innerHTML=`Cylinder ${i+1}<strong></strong><div class="track"><span></span></div>`;strokesEl.appendChild(d);return {d,s:d.querySelector('strong'),bar:d.querySelector('.track span'),last:-1};});
+
+/* ---------- camera orbit ---------- */
+const tgt=V(-.55,1.05,-.45);let rad=9.5,az=-2.35,pol=1.12;
+const clampR=r=>Math.min(20,Math.max(4,r));
+function place(){camera.position.set(tgt.x+rad*Math.sin(pol)*Math.sin(az),tgt.y+rad*Math.cos(pol),tgt.z+rad*Math.sin(pol)*Math.cos(az));camera.lookAt(tgt);}
+const pts=new Map();let pinch0=0,rad0=rad;
+canvas.addEventListener('pointerdown',e=>{canvas.setPointerCapture(e.pointerId);pts.set(e.pointerId,{x:e.clientX,y:e.clientY});
+  if(pts.size===2){const [a,b]=[...pts.values()];pinch0=Math.hypot(a.x-b.x,a.y-b.y);rad0=rad;}});
+canvas.addEventListener('pointermove',e=>{const p=pts.get(e.pointerId);if(!p)return;
+  const dx=e.clientX-p.x,dy=e.clientY-p.y;p.x=e.clientX;p.y=e.clientY;
+  if(pts.size===1){az-=dx*.008;pol=Math.min(2.9,Math.max(.25,pol-dy*.008));}
+  else if(pts.size===2&&pinch0){const [a,b]=[...pts.values()];rad=clampR(rad0*pinch0/Math.max(1,Math.hypot(a.x-b.x,a.y-b.y)));}
+  place();});
+['pointerup','pointercancel'].forEach(t=>canvas.addEventListener(t,e=>{pts.delete(e.pointerId);pinch0=0;}));
+canvas.addEventListener('wheel',e=>{e.preventDefault();rad=clampR(rad*(1+e.deltaY*.001));place();},{passive:false});
+addEventListener('keydown',e=>{const k={ArrowLeft:[.1,0],ArrowRight:[-.1,0],ArrowUp:[0,-.08],ArrowDown:[0,.08]}[e.key];
+  if(k&&e.target===document.body){az+=k[0];pol=Math.min(2.9,Math.max(.25,pol+k[1]));place();}});
+
+const bar=document.getElementById('bar');
+function resize(){const w=innerWidth,h=innerHeight;renderer.setSize(w,h,false);camera.aspect=w/h;camera.updateProjectionMatrix();
+  rad=w/h<.8?15:9.5;place();document.documentElement.style.setProperty('--barH',bar.offsetHeight+'px');}
+addEventListener('resize',resize);resize();
+
+/* ---------- controls ---------- */
+let running=!reduce,speed=220;
+const playBtn=document.getElementById('play');
+function syncPlay(){playBtn.textContent=running?'Pause':'Run';}
+syncPlay();
+playBtn.onclick=()=>{running=!running;syncPlay();};
+document.getElementById('speed').oninput=e=>speed=+e.target.value;
+const tagsBtn=document.getElementById('tagsBtn');
+tagsBtn.onclick=()=>{const on=tagsBtn.getAttribute('aria-pressed')!=='true';tagsBtn.setAttribute('aria-pressed',on);document.body.classList.toggle('hide-tags',!on);};
+const cutBtn=document.getElementById('cutBtn');
+cutBtn.onclick=()=>{const on=cutBtn.getAttribute('aria-pressed')!=='true';cutBtn.setAttribute('aria-pressed',on);applyCut(on);};
+
+/* ---------- animation ---------- */
+const local=(t,i)=>(((t-i*240)%720)+720)%720;
+const lift=(a,s,e)=>a<s||a>e?0:.1*Math.sin(Math.PI*(a-s)/(e-s));
+let theta=30,last=performance.now(),accAir=0;const accI=[0,0,0],accH=[0,0,0];
+const tmp=V(0,0,0);
+
+function frame(now){
+  const dt=Math.min(.05,(now-last)/1000);last=now;
+  const dd=running?speed*dt:0;theta=(theta+dd)%720;
+  const t=theta*DEG;
+  crank.rotation.x=t;crankWheel.rotation.x=t;
+  cam.rotation.x=t/2;
+
+  X.forEach((x,i)=>{
+    const phi=(theta-i*240)*DEG,cy=R*Math.cos(phi),cz=R*Math.sin(phi);
+    const py=cy+Math.sqrt(L*L-cz*cz);
+    pistons[i].position.y=py;
+    rods[i].position.set(x,cy,cz);rods[i].rotation.x=Math.atan2(-cz,py-cy);
+    const a=local(theta,i),top=py+.29,h=Math.max(.01,1.8-top),ch=charges[i];
+    ch.scale.y=h;ch.position.y=top+h/2;
+    let col,op;
+    if(a<80){col=0xf0a040;op=.12+.7*(1-a/80);}
+    else if(a<180){col=0x8a8f94;op=.04+.1*(1-(a-80)/100);}
+    else if(a<360){col=0x8a8f94;op=.06*(1-(a-180)/180);}
+    else if(a<540){col=0x2fb4dc;op=.05+.12*((a-360)/180);}
+    else{col=0x2fb4dc;op=.17+.2*((a-540)/180);}
+    ch.material.color.setHex(col);ch.material.opacity=op;
+    sparks[i].visible=a>712||a<10;sparks[i].scale.setScalar(.7+Math.random()*.6);
+
+    if(dd>0){
+      if(a>=360&&a<540){accI[i]+=dd;while(accI[i]>7){accI[i]-=7;spawn(intakeCurves[i],airMat,170,.032,.16);}}
+      if(a>=385&&a<500){accH[i]+=dd;while(accH[i]>4){accH[i]-=4;spawn(h2Curves[i],h2pMat,110,.03,.08);}}
+    }
+    const st=Math.floor(a/180),r=rows[i];
+    if(st!==r.last){r.last=st;r.s.textContent=STROKES[st][0];r.d.style.setProperty('--sc',`var(${STROKES[st][1]})`);}
+    r.bar.style.width=((a%180)/180*100).toFixed(1)+'%';
+  });
+  if(dd>0){accAir+=dd;while(accAir>9){accAir-=9;spawn(ductCurve,airMat,260,.035,.22);}}
+  stepParticles(dd);
+
+  trains.forEach(tr=>{const a=local(theta,tr.i),l=tr.k==='in'?lift(a,355,545):lift(a,175,365);
+    tr.lifter.position.y=l;tr.pr.position.y=l;tr.rk.rotation.x=Math.asin(l/.25);tr.v.position.y=-l;});
+
+  if(selected)setEmissive(comps[selected.k],0x3fd0ff,.2+.5*(.5+.5*Math.sin(now/1000*5)));
+
+  if(!document.body.classList.contains('hide-tags')){
+    const w=innerWidth,hh=innerHeight;
+    LABELS.forEach(l=>{tmp.copy(l.v).project(camera);
+      if(tmp.z>1){l.el.style.visibility='hidden';return;}
+      l.el.style.visibility='visible';
+      l.el.style.transform=`translate3d(${((tmp.x+1)/2*w-5).toFixed(1)}px,${((1-tmp.y)/2*hh-12).toFixed(1)}px,0)`;});
+  }
+  renderer.render(scene,camera);
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
